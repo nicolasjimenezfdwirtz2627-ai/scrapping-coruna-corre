@@ -1,5 +1,1 @@
 .env
-datos/raw/
-datos/interim/
-datos/clean/
-datos/external
