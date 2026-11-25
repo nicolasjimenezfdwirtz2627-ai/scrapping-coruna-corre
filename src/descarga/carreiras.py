@@ -93,5 +93,66 @@ def descubrir_carreiras():
     return seleccionadas
 
 
+def descubrir_absolutas(carreiras):
+    """Localiza la categoría Absoluta de cada carrera."""
+
+    resultados = []
+
+    print("\n=== DESCUBRIMIENTO DE CATEGORÍAS ABSOLUTAS ===")
+
+    for carreira in carreiras:
+
+        orde = carreira["orde"]
+        url = carreira["url"]
+
+        print(f"\nCarrera {orde}: {carreira['nome']}")
+
+        # Obtener la página de categorías de la carrera
+        soup = obtener_soup(
+            url,
+            RAW / f"carreira_{orde:02d}.html"
+        )
+
+        candidatas = {}
+
+        # Buscar el enlace de la categoría Absoluta
+        for enlace in soup.find_all("a", href=True):
+
+            texto = enlace.get_text(" ", strip=True)
+
+            if not re.match(r"^ABSOLUTA\b", texto, re.IGNORECASE):
+                continue
+
+            url_categoria = urljoin(url, enlace["href"])
+            ruta = urlparse(url_categoria).path
+
+            if re.search(r"/competicion-\d+/?$", ruta):
+                candidatas[url_categoria] = texto
+
+        # Comprobar que existe una única categoría Absoluta
+        if len(candidatas) != 1:
+            raise ValueError(
+                f"Carrera {orde}: se esperaba una categoría "
+                f"Absoluta y se encontraron {len(candidatas)}."
+            )
+
+        url_absoluta, categoria = next(iter(candidatas.items()))
+
+        # Añadir la información descubierta
+        resultados.append({
+            **carreira,
+            "categoria": categoria,
+            "url_absoluta": url_absoluta
+        })
+
+        print(f"[OK] Categoría: {categoria}")
+        print(f"[OK] URL: {url_absoluta}")
+
+    print(f"\nCategorías Absolutas encontradas: {len(resultados)}")
+
+    return resultados
+
+
 if __name__ == "__main__":
-    descubrir_carreiras()
+    carreiras = descubrir_carreiras()
+    descubrir_absolutas(carreiras)
