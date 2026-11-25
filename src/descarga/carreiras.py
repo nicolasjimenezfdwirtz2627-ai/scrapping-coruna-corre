@@ -1,8 +1,9 @@
 import re
+import pandas as pd
 
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs
 
-from .config import RAW, URL_EDICION, NUM_CARREIRAS
+from .config import RAW, INTERIM, URL_EDICION, NUM_CARREIRAS
 from .scraper import obtener_soup
 
 
@@ -153,6 +154,216 @@ def descubrir_absolutas(carreiras):
     return resultados
 
 
+def extraer_filas(soup):
+    """Extrae los resultados de una página de clasificación."""
+
+    columnas = {
+        "Puesto": "puesto",
+        "Dorsal": "dorsal",
+        "Nombre": "nome",
+        "Apellidos": "apelidos",
+        "P. Sexo": "p_sexo",
+        "P. Categoría": "p_categoria",
+        "Tiempo": "tempo"
+    }
+
+    # Localizar la tabla de resultados por sus cabeceras
+    for tabla in soup.find_all("table"):
+
+        cabeceras = [
+            th.get_text(" ", strip=True)
+            for th in tabla.select("thead th")
+        ]
+
+        if all(columna in cabeceras for columna in columnas):
+            break
+
+    else:
+        raise ValueError("No se encontró la tabla de resultados.")
+
+    # Relacionar cada columna con su posición
+    posiciones = {
+        destino: cabeceras.index(origen)
+        for origen, destino in columnas.items()
+    }
+
+    resultados = []
+
+    for tr in tabla.find_all("tr"):
+
+        celdas = tr.find_all("td", recursive=False)
+
+        if not celdas:
+            continue
+
+        if len(celdas) != len(cabeceras):
+            raise ValueError(
+                "Se encontró una fila con un número "
+                "inesperado de columnas."
+            )
+
+        fila = {
+            columna: celdas[posicion].get_text(" ", strip=True)
+            for columna, posicion in posiciones.items()
+        }
+
+        resultados.append(fila)
+
+    return resultados
+
+
+def obtener_siguiente_pagina(soup, url_actual):
+    """Localiza el enlace habilitado a la siguiente página."""
+
+    for enlace in soup.select(".pagination a[href]"):
+
+        texto = enlace.get_text(" ", strip=True).casefold()
+
+        if texto != "siguiente":
+            continue
+
+        padre = enlace.find_parent("li")
+
+        # Comprobar si el enlace está deshabilitado
+        if "disabled" in enlace.get("class", []):
+            continue
+
+        if enlace.get("aria-disabled") == "true":
+            continue
+
+        if padre and "disabled" in padre.get("class", []):
+            continue
+
+        url_siguiente = urljoin(url_actual, enlace["href"])
+
+        # Verificar que seguimos en la misma clasificación
+        actual = urlparse(url_actual)
+        siguiente = urlparse(url_siguiente)
+
+        if (
+            actual.netloc != siguiente.netloc
+            or actual.path != siguiente.path
+        ):
+            raise ValueError(
+                "El enlace de paginación apunta a otra clasificación."
+            )
+
+        # Comprobar que avanzamos exactamente una página
+        pagina_actual = int(
+            parse_qs(actual.query).get("page", ["1"])[0]
+        )
+
+        pagina_siguiente = int(
+            parse_qs(siguiente.query).get("page", ["1"])[0]
+        )
+
+        if pagina_siguiente != pagina_actual + 1:
+            raise ValueError("Salto inesperado en la paginación.")
+
+        return url_siguiente
+
+    return None
+
+
+def descargar_resultados(carreira):
+    """Descarga todas las páginas de resultados de una carrera."""
+
+    orde = carreira["orde"]
+    url = carreira["url_absoluta"]
+
+    pagina = 1
+    resultados = []
+
+    urls_visitadas = set()
+    paginas_vistas = set()
+    filas_por_pagina = []
+
+    print(f"\n=== RESULTADOS DE LA CARRERA {orde} ===")
+    print(carreira["nome"])
+
+    while url is not None:
+
+        # Evitar bucles infinitos
+        if url in urls_visitadas:
+            raise ValueError("Se ha detectado una URL repetida.")
+
+        urls_visitadas.add(url)
+
+        # Descargar o reutilizar la página
+        destino = RAW / (
+            f"carreira_{orde:02d}_resultados_p{pagina:03d}.html"
+        )
+
+        soup = obtener_soup(url, destino)
+
+        # Extraer las filas de la página
+        filas = extraer_filas(soup)
+
+        if not filas:
+            raise ValueError(f"La página {pagina} no contiene resultados.")
+
+        # Detectar páginas con contenido repetido
+        firma = tuple(tuple(fila.values()) for fila in filas)
+
+        if firma in paginas_vistas:
+            raise ValueError("Se han detectado páginas repetidas.")
+
+        paginas_vistas.add(firma)
+
+        resultados.extend(filas)
+        filas_por_pagina.append(len(filas))
+
+        print(
+            f"Página {pagina}: {len(filas)} filas | "
+            f"Total acumulado: {len(resultados)}"
+        )
+
+        # Buscar la siguiente página
+        url = obtener_siguiente_pagina(soup, url)
+
+        if url is not None:
+            pagina += 1
+
+    # Comprobar la coherencia del número de filas
+    capacidad = filas_por_pagina[0]
+
+    if any(n != capacidad for n in filas_por_pagina[:-1]):
+        raise ValueError("Hay páginas intermedias incompletas.")
+
+    if not 1 <= filas_por_pagina[-1] <= capacidad:
+        raise ValueError("Número de filas inesperado en la última página.")
+
+    # Crear el DataFrame
+    df = pd.DataFrame(resultados)
+
+    # Guardar el CSV
+    INTERIM.mkdir(parents=True, exist_ok=True)
+
+    destino_csv = INTERIM / f"carreira_{orde:02d}_raw.csv"
+
+    df.to_csv(
+        destino_csv,
+        index=False,
+        encoding="utf-8"
+    )
+
+    print("\n=== RESUMEN DE LA DESCARGA ===")
+    print(f"Páginas descargadas o reutilizadas: {pagina}")
+    print(f"Filas por página completa: {capacidad}")
+    print(f"Filas en la última página: {filas_por_pagina[-1]}")
+    print(f"Total de resultados: {len(df)}")
+    print(f"Columnas: {df.columns.tolist()}")
+    print(f"CSV generado: {destino_csv.name}")
+
+    return df
+
+
+
 if __name__ == "__main__":
+
     carreiras = descubrir_carreiras()
-    descubrir_absolutas(carreiras)
+
+    carreiras = descubrir_absolutas(carreiras)
+
+    # Prueba únicamente con la primera carrera
+    descargar_resultados(carreiras[0])
