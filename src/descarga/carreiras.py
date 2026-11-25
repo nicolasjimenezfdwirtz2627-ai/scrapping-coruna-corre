@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlparse, parse_qs
 
 from .config import RAW, INTERIM, URL_EDICION, NUM_CARREIRAS
 from .scraper import obtener_soup
+from datetime import date
 
 
 def descubrir_carreiras():
@@ -356,6 +357,135 @@ def descargar_resultados(carreira):
     print(f"CSV generado: {destino_csv.name}")
 
     return df
+
+
+def obtener_fecha(carreira):
+    """Obtiene la fecha desde la página informativa del evento."""
+
+    # Extraer el identificador del evento
+    coincidencia = re.search(
+        r"/evento-(\d+)/?$",
+        urlparse(carreira["url"]).path
+    )
+
+    if not coincidencia:
+        raise ValueError("No se encontró el identificador del evento.")
+
+    evento_id = coincidencia.group(1)
+
+    # Construir la URL de información
+    url_info = urljoin(
+        carreira["url"],
+        f"/es/web/evento/{evento_id}/"
+    )
+
+    # Descargar o reutilizar el HTML
+    soup = obtener_soup(
+        url_info,
+        RAW / f"carreira_{carreira['orde']:02d}_info.html"
+    )
+
+    texto = soup.get_text(" ", strip=True)
+
+    # Buscar la fecha dentro del apartado Lugar y Horarios
+    coincidencia = re.search(
+        r"Lugar\s+y\s+Horarios\s*"
+        r"(\d{1,2})\s+de\s+([a-záéíóúñ]+)"
+        r"\s+de\s+(\d{4})",
+        texto,
+        re.IGNORECASE
+    )
+
+    if not coincidencia:
+        raise ValueError(
+            f"No se encontró la fecha de la carrera "
+            f"{carreira['orde']}."
+        )
+
+    dia, mes, anio = coincidencia.groups()
+
+    meses = {
+        "enero": 1,
+        "febrero": 2,
+        "marzo": 3,
+        "abril": 4,
+        "mayo": 5,
+        "junio": 6,
+        "julio": 7,
+        "agosto": 8,
+        "septiembre": 9,
+        "octubre": 10,
+        "noviembre": 11,
+        "diciembre": 12
+    }
+
+    fecha = date(
+        int(anio),
+        meses[mes.lower()],
+        int(dia)
+    )
+
+    return fecha
+
+
+def descargar_metadatos(carreiras):
+    """Extrae y guarda la información de las carreras."""
+
+    resultados = []
+    fechas = []
+
+    print("\n=== EXTRACCIÓN DE METADATOS ===")
+
+    for carreira in carreiras:
+
+        fecha = obtener_fecha(carreira)
+        fechas.append(fecha)
+
+        resultados.append({
+            "orde": carreira["orde"],
+            "nome": carreira["nome"],
+            "fecha": fecha.strftime("%d/%m/%Y")
+        })
+
+        print(
+            f"[OK] Carrera {carreira['orde']}: "
+            f"{fecha.strftime('%d/%m/%Y')}"
+        )
+
+    # Comprobar el orden cronológico
+    if fechas != sorted(fechas):
+        raise ValueError(
+            "Las carreras no están ordenadas cronológicamente."
+        )
+
+    if len(set(fechas)) != len(fechas):
+        raise ValueError("Se encontraron fechas repetidas.")
+
+    df = pd.DataFrame(
+        resultados,
+        columns=["orde", "nome", "fecha"]
+    )
+
+    INTERIM.mkdir(parents=True, exist_ok=True)
+
+    destino = INTERIM / "carreiras_raw.csv"
+
+    df.to_csv(
+        destino,
+        index=False,
+        encoding="utf-8"
+    )
+
+    print("\n=== RESUMEN DE METADATOS ===")
+    print(df.to_string(index=False))
+
+    print(f"\nCarreras: {len(df)}")
+    print("Orden cronológico: correcto")
+    print(f"Columnas: {df.columns.tolist()}")
+    print(f"CSV generado: {destino.name}")
+
+    return df
+
 
 
 
