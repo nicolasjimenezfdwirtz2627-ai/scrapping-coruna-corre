@@ -9,6 +9,7 @@ INTERIM = RAIZ / "datos" / "interim"
 # Configuración de la web
 URL_BASE = "https://corunacorre.com/"
 URL_EDICION = "https://corunacorre.com/es/web/resultado/edicion-63"
+URL_INSCRITOS = "https://corunacorre.com/es/web/inscripcion/listado/"
 URL_ROBOTS = URL_BASE + "robots.txt"
 
 # Configuración de las peticiones HTTP
