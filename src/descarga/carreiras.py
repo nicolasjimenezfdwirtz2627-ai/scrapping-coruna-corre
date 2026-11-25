@@ -362,8 +362,31 @@ def descargar_resultados(carreira):
 if __name__ == "__main__":
 
     carreiras = descubrir_carreiras()
-
     carreiras = descubrir_absolutas(carreiras)
 
-    # Prueba únicamente con la primera carrera
-    descargar_resultados(carreiras[0])
+    resumen = []
+
+    # Descargar los resultados de cada carrera
+    for carreira in carreiras:
+
+        df = descargar_resultados(carreira)
+
+        resumen.append({
+            "orde": carreira["orde"],
+            "nome": carreira["nome"],
+            "participacions": len(df)
+        })
+
+    # Mostrar un resumen global
+    df_resumen = pd.DataFrame(resumen)
+
+    print("\n=== RESUMEN GLOBAL DE LAS CARRERAS ===")
+
+    print(df_resumen.to_string(index=False))
+
+    print(f"\nCarreras procesadas: {len(df_resumen)}")
+
+    print(
+        "Total de participaciones:",
+        df_resumen["participacions"].sum()
+    )
