@@ -1,1 +1,0 @@
-"""Módulo de avaliación de calidade e limpeza de datos para Coruña Corre."""

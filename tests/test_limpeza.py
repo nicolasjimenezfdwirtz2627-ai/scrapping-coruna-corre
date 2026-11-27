@@ -1,1 +1,0 @@
-# Probas unitarias para validar que os normalizadores non rompen se cambian formatos

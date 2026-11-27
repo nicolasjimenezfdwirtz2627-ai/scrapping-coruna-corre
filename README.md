@@ -220,28 +220,3 @@ Durante el desarrollo de la fase de descarga se ha utilizado ChatGPT como herram
 Las funciones se han ejecutado y comprobado progresivamente en el entorno local, verificando los resultados obtenidos y su adecuación a los requisitos del proyecto.
 
 No se han compartido nombres, apellidos ni registros personales reales con la herramienta de inteligencia artificial. Las pruebas automatizadas se han realizado utilizando datos ficticios.
-
-
-## Calidade e Limpeza de Datos (`src/limpeza`)
-
-Este módulo encárgase de perfilar, limpar, normalizar e auditar os datos en bruto almacenados en `datos/interim/` para xerar os conxuntos de datos finais en `datos/external/`, cumprindo estritamente co **Contrato de Datos** e coa protección de datos persoais (**RGPD**)[cite: 6, 7, 10].
-
-### Estrutura do módulo
-
-* **`src/limpeza/config.py`**: Define as rutas de entrada/saida (`INTERIM_DIR`, `EXTERNAL_DIR`), os esquemas de columnas esixidos polo contrato e os limiares de validación temporal ($600\text{ s}$ a $14\,400\text{ s}$)[cite: 6].
-* **`src/limpeza/normalizadores.py`**: Contén as funcións puras de transformación e estandarización[cite: 9]:
-  * *Textos (`nome`, `apelidos`, nomes de carreira)*: Conversión a `MAIÚSCULAS`, eliminación de tildes/diacríticos mediante descomposición Unicode (`NFD`) e colapso de espazos dobres[cite: 9].
-  * *Dorsais (`dorsal`)*: Limpeza de cadeas nulas (`"nan"`, `"None"`) e eliminación de sufixos decimais (`.0`).
-  * *Desagregación de columnas mesturadas*: Separación mediante expresións regulares de `p_sexo` (ex. `M-3` $\rightarrow$ `sexo="M"`, `p_sexo=3`) e `p_categoria` (ex. `MS2M-1` $\rightarrow$ `categoria="MS2M"`, rescate de `sexo` se faltaba e `p_categoria=1`)[cite: 7, 9].
-  * *Categorías especiais*: Unificación de variantes baixo `"ESPECIAL"` e `"SEN CATEGORIA"` sen descartar participantes[cite: 9].
-  * *Tempos (`tempo`)*: Conversión de `HH:MM:SS` ou `MM:SS` a segundos (`float64`). Os rexistros faltantes, con formato inválido ou fóra de rango biolóxico convértense a `NaN` mantendo a fila do corredor para non alterar os conteos de participación[cite: 9].
-  * *Datas (`fecha`)*: Estandarización ao formato estrito `dd/mm/yyyy`[cite: 7, 9].
-* **`src/limpeza/limpador.py`**: Orquestra o pipeline completo de limpeza e eliminación de duplicados para carreiras individuais, inscritos e metadatos[cite: 7].
-* **`src/limpeza/perfilado.py`**: Xera o perfilado previo de calidade e realiza a auditoría final de esquema, tipos de datos (`dtypes`), nulos e normalización sobre `datos/external/` sen expoñer nomes nin apelidos[cite: 10].
-* **`src/limpeza/main.py`**: Punto de entrada para executar o pipeline por liña de comandos[cite: 8].
-
-### Execución
-
-1. **Dende a terminal** (na raíz do proxecto, coa contorna virtual activada):
-   ```bash
-   python -m src.limpeza.main
